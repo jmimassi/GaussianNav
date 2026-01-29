@@ -11,6 +11,7 @@
 
 
 <p align="center">
+  <a href="https://jmimassi.github.io/GaussianNav/"><img src="https://img.shields.io/badge/Project-Page-blue?logo=github" alt="Project Page"></a>
   <a href="https://arxiv.org/"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv" alt="Paper"></a>
   <a href="#"><img src="https://img.shields.io/badge/%F0%9F%A4%97-Demo-yellow" alt="Demo"></a>
   <a href="#"><img src="https://img.shields.io/badge/Dataset-Nextcloud-0082c9?logo=nextcloud&logoColor=white" alt="Dataset"></a>
