@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description" content="GaussianNav: Safe Camera Path Planning & Rendering in 3D Gaussian Splatting Scenes.">
+  <meta name="keywords" content="GaussianNav, 3D Gaussian Splatting, Path Planning, Optical Flow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GaussianNav: Safe Camera Path Planning in 3DGS</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+
+  <style>
+    .publication-title {
+      font-family: 'Google Sans', sans-serif;
+    }
+    .publication-authors {
+      font-family: 'Google Sans', sans-serif;
+    }
+    .publication-links .button {
+      margin: 4px;
+    }
+    .section {
+      padding: 3rem 1.5rem;
+    }
+    .content h2 {
+      font-family: 'Google Sans', sans-serif;
+    }
+    .feature-icon {
+      color: #4a4a4a;
+      margin-right: 8px;
+    }
+    body {
+      font-family: 'Noto Sans', sans-serif;
+    }
+    .hero-body img.logo {
+      max-width: 200px;
+      margin-bottom: 1rem;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 1.25rem;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    .footer {
+      padding: 2rem 1.5rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <img src="logo.png" alt="GaussianNav Logo" class="logo" style="max-width:200px; margin-bottom:1rem;">
+          <h1 class="title is-1 publication-title">GaussianNav</h1>
+          <p class="subtitle is-4">Safe Camera Path Planning &amp; Rendering in 3D Gaussian Splatting Scenes</p>
+
+          <!-- Links -->
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <span class="link-block">
+                <a href="https://arxiv.org/" class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="ai ai-arxiv"></i></span>
+                  <span>arXiv</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="https://github.com/iastation/GaussianNav" class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fab fa-github"></i></span>
+                  <span>Code</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="#" class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="far fa-images"></i></span>
+                  <span>Dataset</span>
+                </a>
+              </span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Abstract -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>GaussianNav</b> generates smooth, safe camera trajectories through 3D Gaussian Splatting (3DGS) reconstructions.
+            It combines frustum-based volume carving, A* pathfinding, and coverage-aware rotation correction
+            to produce high-quality renderings with dense optical flow.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Features</h2>
+    <div class="columns is-multiline">
+      <div class="column is-half">
+        <div class="box">
+          <h4 class="title is-5"><i class="fas fa-cube feature-icon"></i>Frustum Carving</h4>
+          <p>Computes a navigable volume from training camera depth maps.</p>
+        </div>
+      </div>
+      <div class="column is-half">
+        <div class="box">
+          <h4 class="title is-5"><i class="fas fa-route feature-icon"></i>A* Pathfinding</h4>
+          <p>Plans paths through a density-weighted navigation graph with random waypoints.</p>
+        </div>
+      </div>
+      <div class="column is-half">
+        <div class="box">
+          <h4 class="title is-5"><i class="fas fa-camera feature-icon"></i>Coverage Correction</h4>
+          <p>Backward-propagation algorithm that adjusts camera rotations to avoid empty regions and oversized splats.</p>
+        </div>
+      </div>
+      <div class="column is-half">
+        <div class="box">
+          <h4 class="title is-5"><i class="fas fa-water feature-icon"></i>Optical Flow</h4>
+          <p>Generates geometrically consistent flow maps in KITTI format.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Installation -->
+<section class="section" style="background-color: #f5f5f5;">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Quick Start</h2>
+    <div class="content">
+<pre><code># Clone the repo
+git clone https://github.com/iastation/GaussianNav.git
+cd GaussianNav
+
+# Clone submodules
+git clone https://github.com/graphdeco-inria/diff-gaussian-rasterization.git submodules/diff-gaussian-rasterization
+git clone https://gitlab.inria.fr/bkerbl/simple-knn.git submodules/simple-knn
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Build CUDA submodules
+pip install submodules/diff-gaussian-rasterization
+pip install submodules/simple-knn</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- Usage -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Usage</h2>
+    <div class="content has-text-justified">
+      <h4 class="title is-5">Option A — You don't have a trained model yet</h4>
+      <p>First, run COLMAP on your images to extract camera poses, then configure and run:</p>
+<pre><code>python create_splat.py
+python gaussiannav.py</code></pre>
+
+      <h4 class="title is-5">Option B — You already have a trained model (.ply)</h4>
+      <p>If you already have a trained 3DGS model (with <code>point_cloud/</code>, <code>cameras.json</code>, <code>cfg_args</code>), configure <code>gaussiannav.py</code> with your model path and run:</p>
+<pre><code>python gaussiannav.py</code></pre>
+      <p>All parameters are configured directly in the Python files. Edit the <code>args</code> section at the top of each script before running.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Acknowledgements -->
+<section class="section" style="background-color: #f5f5f5;">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Acknowledgements</h2>
+    <div class="content has-text-centered">
+      <p>Our code is inspired by the work of the authors of <a href="https://github.com/HanLingsgjk/UnifiedGeneralization">UnifiedGeneralization</a> — check it out!</p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content has-text-centered">
+          <p>
+            Website template adapted from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>,
+            licensed under <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
