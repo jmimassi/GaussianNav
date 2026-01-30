@@ -22,7 +22,7 @@ import cv2
 from tqdm import tqdm
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import gaussian_filter1d
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree as KDTree
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import networkx as nx
@@ -335,7 +335,6 @@ def plan_safe_random_path(cameras, safe_points, safe_v_tree, num_steps=200,
     
     # Calculate density-based weights
     density_radius = diag * 0.05
-    print(f"  Calculating local density...")
     neighbor_counts = node_tree.query_ball_point(nodes, r=density_radius, return_length=True)
     
     max_density = np.max(neighbor_counts) if len(neighbor_counts) > 0 else 1.0
@@ -682,28 +681,44 @@ def correct_trajectory_for_coverage(path_data, gaussians, scene, pipeline, backg
         R_orig = rotations[i]
         q_orig = rotation_matrix_to_quaternion(R_orig)
         
-        # 1. Generate Candidates
+        # 0. Early exit: check if original rotation is already safe
+        c2w_orig = np.zeros((3, 4), dtype=np.float32)
+        c2w_orig[:3, :3] = R_orig
+        c2w_orig[:3, 3] = pos
+        template_cam = update_camera_pose(template_cam, c2w_orig)
+        e_orig, ms_orig, _, _ = evaluate_view_metrics(template_cam, gaussians, pipeline,
+                                                       background, kernel_size, coverage_threshold)
+
+        orig_is_safe = (e_orig <= max_empty_percent and ms_orig <= max_mean_scale)
+        reachable_from_next = True
+        if next_corrected_R is not None:
+            reachable_from_next = rotation_distance(R_orig, next_corrected_R) <= max_step_deg
+
+        if orig_is_safe and reachable_from_next:
+            corrected_rotations_map[i] = R_orig
+            next_corrected_R = R_orig
+            next_corrected_q = q_orig
+            continue
+
+        # 1. Generate Candidates (original not safe or not reachable)
         candidates = []
-        
+
         # Candidate A: Original Rotation
-        candidates.append({'R': R_orig, 'q': q_orig, 'type': 'orig'})
-        
+        candidates.append({'R': R_orig, 'q': q_orig, 'type': 'orig',
+                          'empty': e_orig, 'scale': ms_orig})
+
         # Candidate B: Interpolations towards next corrected (if exists)
         if next_corrected_q is not None:
-             # Sample points between current original and next corrected
-             # usage: if original is safe but far from next, we might want something in between
-             for t in [0.25, 0.5, 0.75]:
+             for t in [0.3, 0.6]:
                  q_interp = quaternion_slerp(q_orig, next_corrected_q, t)
                  R_interp = quaternion_to_rotation_matrix(q_interp)
                  candidates.append({'R': R_interp, 'q': q_interp, 'type': 'interp'})
-                 
-             # Also add next corrected itself
+
              candidates.append({'R': next_corrected_R, 'q': next_corrected_q, 'type': 'next'})
 
-        # Candidate C: Random Perturbations around Original
-        # (To find safe spots near original intent)
+        # Candidate C: Random Perturbations around Original (reduced count)
         max_angle_rad = np.deg2rad(max_rotation_perturbation_deg)
-        for _ in range(num_rotation_samples):
+        for _ in range(min(num_rotation_samples, 8)):
             axis = rng.normal(size=3)
             axis = axis / (np.linalg.norm(axis) + 1e-8)
             angle = rng.uniform(-max_angle_rad, max_angle_rad)
@@ -711,11 +726,10 @@ def correct_trajectory_for_coverage(path_data, gaussians, scene, pipeline, backg
             R_cand = R_pert @ R_orig
             q_cand = rotation_matrix_to_quaternion(R_cand)
             candidates.append({'R': R_cand, 'q': q_cand, 'type': 'pert_orig'})
-            
+
         # Candidate D: Random Perturbations around Next Corrected (if exists)
-        # (To find safe spots reachable from next)
         if next_corrected_R is not None:
-             for _ in range(num_rotation_samples // 2):
+             for _ in range(min(num_rotation_samples // 2, 4)):
                 axis = rng.normal(size=3)
                 axis = axis / (np.linalg.norm(axis) + 1e-8)
                 angle = rng.uniform(-max_angle_rad, max_angle_rad)
@@ -730,25 +744,28 @@ def correct_trajectory_for_coverage(path_data, gaussians, scene, pipeline, backg
         best_R_violation = None
         
         for cand in candidates:
-            c2w_cand = np.zeros((3, 4), dtype=np.float32)
-            c2w_cand[:3, :3] = cand['R']
-            c2w_cand[:3, 3] = pos
-            
-            template_cam = update_camera_pose(template_cam, c2w_cand)
-            e_cand, mean_s, max_s, avg10_s = evaluate_view_metrics(template_cam, gaussians, pipeline,
-                                                                   background, kernel_size, coverage_threshold)
+            # Skip re-rendering original, we already have its metrics
+            if 'empty' not in cand or cand['type'] != 'orig':
+                c2w_cand = np.zeros((3, 4), dtype=np.float32)
+                c2w_cand[:3, :3] = cand['R']
+                c2w_cand[:3, 3] = pos
 
-            cand['empty'] = e_cand
-            cand['scale'] = mean_s
-            cand['scale_max'] = max_s
-            cand['scale_top10avg'] = avg10_s
+                template_cam = update_camera_pose(template_cam, c2w_cand)
+                e_cand, mean_s, max_s, avg10_s = evaluate_view_metrics(template_cam, gaussians, pipeline,
+                                                                       background, kernel_size, coverage_threshold)
 
-            # Check safety using mean scale (preserves previous behaviour)
+                cand['empty'] = e_cand
+                cand['scale'] = mean_s
+                cand['scale_max'] = max_s
+                cand['scale_top10avg'] = avg10_s
+
+            e_cand = cand['empty']
+            mean_s = cand['scale']
+
             is_safe = (e_cand <= max_empty_percent and mean_s <= max_mean_scale)
             if is_safe:
                 safe_candidates.append(cand)
 
-            # Track best violation for fallback (mean-based)
             violation = max(0, e_cand - max_empty_percent) + max(0, (mean_s - max_mean_scale) * 1000)
             if violation < best_violation:
                 best_violation = violation
@@ -1011,21 +1028,17 @@ def render_path_with_outputs(gaussians, scene, path_data, output_dir,
         for i in tqdm(range(n_frames), desc="Rendering"):
             pos, c2w = path_data[i]
             template_cam = update_camera_pose(template_cam, c2w)
-            
-            # Render RGB
-            render_output = render(template_cam, gaussians, pipeline, background, kernel_size)
-            rgb = render_output['render']
-            
-            # Render coverage
-            coverage_out = render(template_cam, gaussians, pipeline, bg_black, kernel_size, 
-                                 override_color=override_color)
-            coverage_map = coverage_out['render'].mean(dim=0)
+
+            with torch.no_grad():
+                render_out = render(template_cam, gaussians, pipeline, background, kernel_size)
+                rgb = render_out['render']
+                coverage_map = render_out['render'].mean(dim=0)
             
             empty_mask = coverage_map < coverage_threshold
             empty_percent = empty_mask.float().mean().item() * 100.0
 
             # Compute mean gaussian splat scale and additional stats for gaussians that are visible (occlusion culled)
-            mean_scale, max_scale, avg_top10 = calculate_mean_scale(template_cam, gaussians, coverage_out)
+            mean_scale, max_scale, avg_top10 = calculate_mean_scale(template_cam, gaussians, render_out)
 
             # Write metrics to validation/metrics file
             f_cov.write(f"{i:05d},{empty_percent:.4f},{mean_scale:.6f},{max_scale:.6f},{avg_top10:.6f}\n")
@@ -1191,6 +1204,8 @@ def main():
         )
         print(f"  Generated safe volume with {len(safe_points)} points")
         safe_v_tree = KDTree(safe_points)
+
+
     
     # Generate path
     print("\nGenerating camera path...")
@@ -1204,6 +1219,7 @@ def main():
         noise_rot_deg=args.noise_rot_deg,
         seed=args.random_seed
     )
+
     
     path_data = [(path_result['positions'][i], path_result['c2ws'][i]) 
                  for i in range(len(path_result['positions']))]
@@ -1216,7 +1232,7 @@ def main():
         max_empty_percent=args.coverage_threshold,
         max_mean_scale=0.03,
         coverage_threshold=args.coverage_threshold,
-        num_rotation_samples=20,
+        num_rotation_samples=5,
         max_rotation_perturbation_deg=45.0,
         smoothing_sigma=4.0,
         seed=args.random_seed
@@ -1236,6 +1252,18 @@ def main():
         coverage_threshold=args.coverage_threshold
     )
     
+    # Generate video from rendered images
+    img_dir = os.path.join(args.output_dir, "img")
+    video_path = os.path.join(args.output_dir, "output_video.mp4")
+    print(f"\nGenerating video from {img_dir}...")
+    ffmpeg_cmd = (
+        f'ffmpeg -y -framerate 30 -pattern_type glob -i \'{img_dir}/*.png\' '
+        f'-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p '
+        f'"{video_path}"'
+    )
+    os.system(ffmpeg_cmd)
+    print(f"Saved video to: {video_path}")
+
     print(f"\n=== Done! ===")
     print(f"Output: {args.output_dir}")
 
